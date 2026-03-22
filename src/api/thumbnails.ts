@@ -24,10 +24,12 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   if (!(image instanceof File)) {
     throw new BadRequestError("Invalid image File");
   }
+
   const MAX_UPLOAD_SIZE = 10 << 20;
   if (image.size > MAX_UPLOAD_SIZE) {
     throw new BadRequestError("File size exceeds 10MB limit");
   }
+
   const metadata = getVideo(cfg.db, videoId);
   if (!metadata) {
     throw new NotFoundError("Couldn't find video");
@@ -35,7 +37,12 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   if (metadata.userID !== userID) {
     throw new UserForbiddenError("You are not the owner of this video");
   }
+
   const imageData = Buffer.from(await image.arrayBuffer());
+  if (image.type !== 'image/jpeg' && image.type !== 'image/png'){
+    throw new BadRequestError("File type is wrong");
+  }
+
   const ext = image.type.split("/")[1];
   const filePath = path.join(cfg.assetsRoot, `${videoId}.${ext}`);
   Bun.write(filePath, imageData);
