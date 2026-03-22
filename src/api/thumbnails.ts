@@ -1,40 +1,11 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo } from "../db/videos";
+import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
-import { BadRequestError, NotFoundError } from "./errors";
+import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
+import path from "path";
 
-type Thumbnail = {
-  data: ArrayBuffer;
-  mediaType: string;
-};
-
-const videoThumbnails: Map<string, Thumbnail> = new Map();
-
-export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  const { videoId } = req.params as { videoId?: string };
-  if (!videoId) {
-    throw new BadRequestError("Invalid video ID");
-  }
-
-  const video = getVideo(cfg.db, videoId);
-  if (!video) {
-    throw new NotFoundError("Couldn't find video");
-  }
-
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
-  }
-
-  return new Response(thumbnail.data, {
-    headers: {
-      "Content-Type": thumbnail.mediaType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -48,6 +19,31 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   console.log("uploading thumbnail for video", videoId, "by user", userID);
 
   // TODO: implement the upload here
+  const parsedform = await req.formData();
+  const image = parsedform.get("thumbnail");
+  if (!(image instanceof File)) {
+    throw new BadRequestError("Invalid image File");
+  }
+  const MAX_UPLOAD_SIZE = 10 << 20;
+  if (image.size > MAX_UPLOAD_SIZE) {
+    throw new BadRequestError("File size exceeds 10MB limit");
+  }
+  const metadata = getVideo(cfg.db, videoId);
+  if (!metadata) {
+    throw new NotFoundError("Couldn't find video");
+  }
+  if (metadata.userID !== userID) {
+    throw new UserForbiddenError("You are not the owner of this video");
+  }
+  const imageData = Buffer.from(await image.arrayBuffer());
+  const ext = image.type.split("/")[1];
+  const filePath = path.join(cfg.assetsRoot, `${videoId}.${ext}`);
+  Bun.write(filePath, imageData);
 
-  return respondWithJSON(200, null);
+  const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}.${ext}`;
+  metadata.thumbnailURL = thumbnailURL;
+  updateVideo(cfg.db, metadata);
+
+
+  return respondWithJSON(200, metadata);
 }
