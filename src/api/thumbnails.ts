@@ -19,7 +19,6 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   console.log("uploading thumbnail for video", videoId, "by user", userID);
 
-  // TODO: implement the upload here
   const parsedform = await req.formData();
   const image = parsedform.get("thumbnail");
   if (!(image instanceof File)) {
